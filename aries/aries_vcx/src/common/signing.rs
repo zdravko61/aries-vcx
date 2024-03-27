@@ -27,7 +27,7 @@ async fn get_signature_data(
     let now: u64 = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
     let mut sig_data = now.to_be_bytes().to_vec();
     sig_data.extend(data.as_bytes());
-    
+
     let signature = wallet
         .sign(&Key::from_base58(key, KeyType::Ed25519)?, &sig_data)
         .await?;
@@ -53,7 +53,7 @@ pub async fn sign_connection_response(
     let signature = general_purpose::URL_SAFE.encode(signature);
 
 
-    let connection_sig = ConnectionSignature::new(signature, sig_data, Key::base58(&k));
+    let connection_sig = ConnectionSignature::new(signature, sig_data, k.base58());
 
     Ok(connection_sig)
 }
