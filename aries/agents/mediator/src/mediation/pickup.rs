@@ -88,7 +88,7 @@ async fn handle_pickup_delivery_req<T: MediatorPersistence>(
     auth_pubkey: &str,
 ) -> Pickup {
     info!("Received {:#?}", &delivery_request);
-        let messages = storage
+    let messages = storage
         .retrieve_pending_messages(
             auth_pubkey,
             delivery_request.content.limit,

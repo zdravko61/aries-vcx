@@ -52,7 +52,6 @@ pub async fn sign_connection_response(
     let sig_data = general_purpose::URL_SAFE.encode(sig_data);
     let signature = general_purpose::URL_SAFE.encode(signature);
 
-
     let connection_sig = ConnectionSignature::new(signature, sig_data, k.base58());
 
     Ok(connection_sig)
