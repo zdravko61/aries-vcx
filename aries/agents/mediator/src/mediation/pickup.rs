@@ -124,7 +124,7 @@ async fn handle_pickup_delivery_req<T: MediatorPersistence>(
             .build())
         .build();
 
-       let c = Pickup::Delivery(
+       Pickup::Delivery(
             Delivery::builder()
                 .content(DeliveryContent {
                     recipient_key: delivery_request.content.recipient_key.to_owned(),
@@ -133,8 +133,7 @@ async fn handle_pickup_delivery_req<T: MediatorPersistence>(
                 .id(Uuid::new_v4().to_string())
                 .decorators(decorators)
                 .build(),
-        );
-        c
+        )
     } else {
         // send default status message instead
         handle_pickup_default_status(storage, auth_pubkey).await
