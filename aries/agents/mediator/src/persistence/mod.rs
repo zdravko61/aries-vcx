@@ -10,8 +10,8 @@ use diddoc_legacy::aries::diddoc::AriesDidDoc;
 
 use self::errors::{
     AddRecipientError, CreateAccountError, GetAccountDetailsError, GetAccountIdError,
-    ListAccountsError, ListRecipientKeysError, PersistForwardMessageError, RemoveRecipientError,
-    RetrievePendingMessageCountError, RetrievePendingMessagesError,
+    ListAccountsError, ListRecipientKeysError, PersistForwardMessageError, RemoveMessagesError,
+    RemoveRecipientError, RetrievePendingMessageCountError, RetrievePendingMessagesError,
 };
 use crate::utils::structs::VerKey;
 
@@ -63,6 +63,7 @@ pub trait MediatorPersistence: Send + Sync + 'static {
         &self,
         auth_pubkey: &str,
     ) -> Result<AccountDetails, GetAccountDetailsError>;
+    async fn remove_messages(&self, message_ids: Vec<String>) -> Result<(), RemoveMessagesError>;
 }
 
 #[derive(Debug)]

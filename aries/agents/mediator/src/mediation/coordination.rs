@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use messages::msg_fields::protocols::coordinate_mediation::{
+use log::info;
+use messages::{decorators::thread::Thread, msg_fields::protocols::coordinate_mediation::{
     keylist::KeylistItem,
     keylist_update::{KeylistUpdateItem, KeylistUpdateItemAction},
     keylist_update_response::{KeylistUpdateItemResult, KeylistUpdateResponseItem},
@@ -11,7 +12,8 @@ use messages::msg_fields::protocols::coordinate_mediation::{
     KeylistUpdateContent, KeylistUpdateResponse, KeylistUpdateResponseContent,
     KeylistUpdateResponseDecorators, MediateDeny, MediateDenyContent, MediateDenyDecorators,
     MediateGrant, MediateGrantContent, MediateGrantDecorators,
-};
+}, msg_parts::MsgParts};
+use public_key::Key;
 use uuid::Uuid;
 
 use crate::persistence::MediatorPersistence;
@@ -28,7 +30,7 @@ pub async fn handle_coord_authenticated(
             );
         }
         CoordinateMediation::KeylistUpdate(keylist_update) => {
-            handle_keylist_update(storage, keylist_update.content, auth_pubkey).await
+            handle_keylist_update(storage, keylist_update, auth_pubkey).await
         }
         CoordinateMediation::KeylistQuery(keylist_query) => {
             handle_keylist_query(storage, keylist_query.content, auth_pubkey).await
@@ -100,21 +102,57 @@ pub async fn handle_keylist_query<T: MediatorPersistence>(
 
 pub async fn handle_keylist_update<T: MediatorPersistence>(
     storage: Arc<T>,
-    keylist_update_data: KeylistUpdateContent,
+    keylist_update_data: MsgParts<KeylistUpdateContent>,
     auth_pubkey: &str,
 ) -> CoordinateMediation {
-    let updates: Vec<KeylistUpdateItem> = keylist_update_data.updates;
+    let updates: Vec<KeylistUpdateItem> = keylist_update_data.content.updates;
     let mut updated: Vec<KeylistUpdateResponseItem> = Vec::new();
     for update_item in updates.into_iter() {
         let result = match &update_item.action {
             KeylistUpdateItemAction::Add => {
+            let key = match update_item.recipient_key.strip_prefix("did:key:") {
+                Some(key_fingerprint) => {
+                    let key_result = Key::from_fingerprint(key_fingerprint);
+                    match key_result {
+                        Ok(key) => {
+                            let base58_key = Key::base58(&key);
+                            base58_key
+                        },
+                        Err(err) => {
+                            info!("Error creating key from fingerprint: {:?}", err);
+                            update_item.recipient_key.clone() 
+                        }
+                    }
+                },
+                None => update_item.recipient_key.clone(), 
+            };
+
+ 
                 storage
-                    .add_recipient(auth_pubkey, &update_item.recipient_key)
+                    .add_recipient(auth_pubkey, &key)
                     .await
             }
             KeylistUpdateItemAction::Remove => {
+                let key = match update_item.recipient_key.strip_prefix("did:key:") {
+                    Some(key_fingerprint) => {
+                        let key_result = Key::from_fingerprint(key_fingerprint);
+                        match key_result {
+                            Ok(key) => {
+                                let base58_key = Key::base58(&key);
+                                base58_key
+                            },
+                            Err(err) => {
+                                info!("Error creating key from fingerprint: {:?}", err);
+                                update_item.recipient_key.clone() 
+                            }
+                        }
+                    },
+                    None => update_item.recipient_key.clone(), 
+                };
+     
+
                 storage
-                    .remove_recipient(auth_pubkey, &update_item.recipient_key)
+                    .remove_recipient(auth_pubkey, &key)
                     .await
             }
         };
@@ -128,9 +166,20 @@ pub async fn handle_keylist_update<T: MediatorPersistence>(
             result: update_item_result,
         });
     }
+
+    let decorators = KeylistUpdateResponseDecorators::builder()
+        .thread(
+            Thread::builder()
+                .thid(
+                    keylist_update_data.id
+                )
+                .build(),
+        )
+        .build();
+
     let keylist_update_response = KeylistUpdateResponse::builder()
         .content(KeylistUpdateResponseContent { updated })
-        .decorators(KeylistUpdateResponseDecorators::default())
+        .decorators(decorators)
         .id(Uuid::new_v4().to_string())
         .build();
     CoordinateMediation::KeylistUpdateResponse(keylist_update_response)

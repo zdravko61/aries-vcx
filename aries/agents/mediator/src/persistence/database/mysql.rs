@@ -17,8 +17,8 @@ use crate::{
         errors::{
             AccountNotFound, AddRecipientError, CreateAccountError, DecodeError,
             GetAccountDetailsError, GetAccountIdError, ListAccountsError, ListRecipientKeysError,
-            PersistForwardMessageError, RemoveRecipientError, RetrievePendingMessageCountError,
-            RetrievePendingMessagesError, StorageBackendError,
+            PersistForwardMessageError, RemoveMessagesError, RemoveRecipientError,
+            RetrievePendingMessageCountError, RetrievePendingMessagesError, StorageBackendError,
         },
         AccountDetails,
     },
@@ -309,12 +309,40 @@ impl MediatorPersistence for sqlx::MySqlPool {
                 break;
             }
         }
+
+        let message_ids: Vec<String> = messages.iter().map(|(id, _)| id.clone()).collect();
+
+        //TODO: implement message states - pending and sent and make delete with a config flag
+        self.remove_messages(message_ids).await.map_err(|e| {
+            RetrievePendingMessagesError::StorageBackendError(StorageBackendError {
+                source: e.into(),
+            })
+        })?;
+
         info!(
             "Found total of {:#?} messages, returning them",
             messages.len()
         );
         Ok(messages)
     }
+
+    async fn remove_messages(&self, message_ids: Vec<String>) -> Result<(), RemoveMessagesError> {
+        info!("Removing messages with ids {:#?}", message_ids);
+        let query = format!(
+            "DELETE FROM messages WHERE message_id IN ({})",
+            message_ids
+                .iter()
+                .map(|id| format!("'{}'", id))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+        sqlx::query(&query)
+            .execute(self)
+            .await
+            .map_err(|e| anyhow!(e).context("Error while deleting messages from the database"))?;
+        Ok(())
+    }
+
     async fn add_recipient(
         &self,
         auth_pubkey: &str,

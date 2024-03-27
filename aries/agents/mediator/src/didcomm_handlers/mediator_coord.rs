@@ -1,6 +1,9 @@
 use aries_vcx_core::wallet::base_wallet::BaseWallet;
-use messages::msg_fields::protocols::coordinate_mediation::{
-    CoordinateMediation, MediateGrant, MediateGrantContent, MediateGrantDecorators,
+use messages::{
+    decorators::thread::Thread,
+    msg_fields::protocols::coordinate_mediation::{
+        CoordinateMediation, MediateGrant, MediateGrantContent, MediateGrantDecorators,
+    },
 };
 use uuid::Uuid;
 
@@ -28,9 +31,13 @@ pub async fn handle_mediation_coord(
             endpoint: service.service_endpoint.to_string(),
             routing_keys,
         };
+
+        let thread = Thread::builder().thid(_mediate_request.id).build();
+        let decorators = MediateGrantDecorators::builder().thread(thread).build();
+
         let mediate_grant = MediateGrant::builder()
             .content(mediate_grant_content)
-            .decorators(MediateGrantDecorators::default())
+            .decorators(decorators)
             .id(Uuid::new_v4().to_string())
             .build();
         let coord_response = CoordinateMediation::MediateGrant(mediate_grant);

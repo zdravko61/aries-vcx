@@ -36,6 +36,7 @@ url = "2.4.1"
 uuid = "1.4.1"
 test_utils = { path = "../../misc/test_utils" }
 base64-url = "2.0.0"
+public_key = { path = "../../../did_core/public_key" }
 
 [dev-dependencies]
 base64-url = "2.0.0"

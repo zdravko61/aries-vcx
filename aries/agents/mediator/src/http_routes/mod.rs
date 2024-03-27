@@ -3,13 +3,14 @@ use std::sync::Arc;
 use aries_vcx_core::wallet::base_wallet::BaseWallet;
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::header::{HeaderMap, ACCEPT},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
-use serde_json::Value;
+use messages::AriesMessage;
+use serde_json::{json, Value};
 
 use crate::{
     aries_agent::{Agent, ArcAgent},
@@ -46,12 +47,26 @@ pub async fn oob_invite_qr(
         }
     }
 }
+pub async fn oob_invite_base64url(
+    State(agent): State<ArcAgent<impl BaseWallet, impl MediatorPersistence>>,
+) -> Json<Value> {
+    let oob = agent.get_oob_invite().unwrap();
+    let msg = AriesMessage::from(oob);
+
+    let url = base64_url::encode(&msg.to_string());
+
+    let mut endpoint = agent.get_service_ref().unwrap().service_endpoint.clone();
+    endpoint.set_path("");
+
+    Json(json!({ "invitationUrl": format!("{}?oob={}", endpoint, url)}))
+}
 
 pub async fn oob_invite_json(
     State(agent): State<ArcAgent<impl BaseWallet, impl MediatorPersistence>>,
 ) -> Json<Value> {
     let oob = agent.get_oob_invite().unwrap();
-    Json(serde_json::to_value(oob).unwrap())
+    let msg = AriesMessage::from(oob);
+    Json(serde_json::to_value(msg).unwrap())
 }
 
 pub async fn handle_didcomm(
@@ -71,8 +86,11 @@ pub async fn build_router(
     Router::default()
         .route("/", get(readme))
         .route("/register", get(oob_invite_qr))
+        .route("/invite", get(oob_invite_base64url))
         .route("/register.json", get(oob_invite_json))
-        .route("/didcomm", get(handle_didcomm).post(handle_didcomm))
+        .route("/didcomm", post(handle_didcomm))
+        //FIXME: why this does not work all the time ??
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 30))
         .layer(tower_http::catch_panic::CatchPanicLayer::new())
         .with_state(Arc::new(agent))
 }

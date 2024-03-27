@@ -9,8 +9,7 @@ use public_key::{Key, KeyType};
 use uuid::Uuid;
 
 use crate::{
-    errors::error::prelude::*,
-    utils::didcomm_utils::{get_routing_keys, resolve_base58_key_agreement},
+    errors::error::prelude::*, utils::didcomm_utils::{get_routing_keys, resolve_base58_key_agreement}
 };
 
 #[derive(Debug)]
@@ -109,15 +108,20 @@ impl EncryptionEnvelope {
         let recipient_keys = vec![Key::from_base58(&recipient_key, KeyType::Ed25519)?];
 
         wallet
-            .pack_message(
-                sender_vk
-                    .map(|key| Key::from_base58(key, KeyType::Ed25519))
-                    .transpose()?,
-                recipient_keys,
-                data,
-            )
-            .await
-            .map_err(|err| err.into())
+        .pack_message(
+            match sender_vk {
+                Some(key) => Some(
+                    Key::from_fingerprint(
+                        key.strip_prefix("did:key:").unwrap(),
+                    )?,
+                ),
+                None => sender_vk.map(|key| Key::from_base58(key, KeyType::Ed25519)).transpose()?,
+            },
+            recipient_keys,
+            data,
+        )
+        .await
+        .map_err(|err| err.into())
     }
 
     async fn wrap_into_forward_messages(

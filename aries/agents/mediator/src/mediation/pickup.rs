@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use log::info;
 use messages::{
-    decorators::attachment::{Attachment, AttachmentData, AttachmentType},
+    decorators::{attachment::{Attachment, AttachmentData, AttachmentType}, thread::Thread, transport::{ReturnRoute, Transport}},
     msg_fields::protocols::pickup::{
-        Delivery, DeliveryContent, DeliveryRequestContent, Pickup, Status, StatusContent,
-        StatusDecorators, StatusRequestContent,
+        Delivery, DeliveryContent, DeliveryDecorators, DeliveryRequest, Pickup, Status, StatusContent, StatusDecorators, StatusRequest, StatusRequestContent, 
     },
 };
 use uuid::Uuid;
@@ -21,7 +20,7 @@ pub async fn handle_pickup_authenticated<T: MediatorPersistence>(
 ) -> Pickup {
     match &pickup_message {
         Pickup::StatusRequest(status_request) => {
-            handle_pickup_status_req(&status_request.content, storage, auth_pubkey).await
+            handle_pickup_status_req(&status_request, storage, auth_pubkey).await
         }
         // Why is client sending us status? That's server's job.
         Pickup::Status(_status) =>
@@ -31,7 +30,7 @@ pub async fn handle_pickup_authenticated<T: MediatorPersistence>(
         }
 
         Pickup::DeliveryRequest(delivery_request) => {
-            handle_pickup_delivery_req(&delivery_request.content, storage, auth_pubkey).await
+            handle_pickup_delivery_req(&delivery_request, storage, auth_pubkey).await
         }
         _ => {
             info!("Received {:#?}", &pickup_message);
@@ -42,16 +41,16 @@ pub async fn handle_pickup_authenticated<T: MediatorPersistence>(
 }
 
 async fn handle_pickup_status_req<T: MediatorPersistence>(
-    status_request: &StatusRequestContent,
+    status_request: &StatusRequest,
     storage: Arc<T>,
     auth_pubkey: &str,
 ) -> Pickup {
     info!("Received {:#?}", &status_request);
     let message_count = storage
-        .retrieve_pending_message_count(auth_pubkey, status_request.recipient_key.as_ref())
+        .retrieve_pending_message_count(auth_pubkey, status_request.content.recipient_key.as_ref())
         .await
         .unwrap();
-    let status_content = if let Some(recipient_key) = status_request.recipient_key.clone() {
+    let status_content = if let Some(recipient_key) = status_request.content.recipient_key.clone() {
         StatusContent::builder()
             .message_count(message_count)
             .recipient_key(recipient_key)
@@ -61,9 +60,20 @@ async fn handle_pickup_status_req<T: MediatorPersistence>(
             .message_count(message_count)
             .build()
     };
+    let decorators = StatusDecorators::builder()
+        .thread(
+            Thread::builder()
+                .thid(status_request.id.clone()) 
+                .build(),
+        )
+        .transport(Transport::builder()
+            .return_route(ReturnRoute::All)
+            .build())
+        .build();
+
     let status = Status::builder()
         .content(status_content)
-        .decorators(StatusDecorators::default())
+        .decorators(decorators)
         .id(Uuid::new_v4().to_string())
         .build();
 
@@ -71,17 +81,18 @@ async fn handle_pickup_status_req<T: MediatorPersistence>(
     Pickup::Status(status)
 }
 
+
 async fn handle_pickup_delivery_req<T: MediatorPersistence>(
-    delivery_request: &DeliveryRequestContent,
+    delivery_request: &DeliveryRequest,
     storage: Arc<T>,
     auth_pubkey: &str,
 ) -> Pickup {
     info!("Received {:#?}", &delivery_request);
-    let messages = storage
+        let messages = storage
         .retrieve_pending_messages(
             auth_pubkey,
-            delivery_request.limit,
-            delivery_request.recipient_key.as_ref(),
+            delivery_request.content.limit,
+            delivery_request.content.recipient_key.as_ref(),
         )
         .await
         .unwrap();
@@ -102,15 +113,28 @@ async fn handle_pickup_delivery_req<T: MediatorPersistence>(
         })
         .collect();
     if !attach.is_empty() {
-        Pickup::Delivery(
+        let decorators = DeliveryDecorators::builder()
+        .thread(
+            Thread::builder()
+                .thid(delivery_request.id.clone())
+                .build(),
+        )
+        .transport(Transport::builder()
+            .return_route(ReturnRoute::All)
+            .build())
+        .build();
+
+       let c = Pickup::Delivery(
             Delivery::builder()
                 .content(DeliveryContent {
-                    recipient_key: delivery_request.recipient_key.to_owned(),
+                    recipient_key: delivery_request.content.recipient_key.to_owned(),
                     attach,
                 })
                 .id(Uuid::new_v4().to_string())
+                .decorators(decorators)
                 .build(),
-        )
+        );
+        c
     } else {
         // send default status message instead
         handle_pickup_default_status(storage, auth_pubkey).await
@@ -138,6 +162,10 @@ async fn handle_pickup_default_status(
     auth_pubkey: &str,
 ) -> Pickup {
     info!("Default behavior: responding with status");
-    let status_request = StatusRequestContent::builder().build();
+    let status_content = StatusRequestContent::builder().build();
+    let status_request = StatusRequest::builder()
+        .content(status_content)
+        .id(Uuid::new_v4().to_string())
+        .build();
     handle_pickup_status_req(&status_request, storage, auth_pubkey).await
 }

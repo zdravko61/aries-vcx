@@ -3390,6 +3390,7 @@ dependencies = [
  "futures",
  "log",
  "messages",
+ "public_key",
  "reqwest",
  "serde",
  "serde_json",

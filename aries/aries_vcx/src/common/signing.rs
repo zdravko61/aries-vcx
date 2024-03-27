@@ -27,7 +27,7 @@ async fn get_signature_data(
     let now: u64 = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
     let mut sig_data = now.to_be_bytes().to_vec();
     sig_data.extend(data.as_bytes());
-
+    
     let signature = wallet
         .sign(&Key::from_base58(key, KeyType::Ed25519)?, &sig_data)
         .await?;
@@ -41,12 +41,19 @@ pub async fn sign_connection_response(
     con_data: &ConnectionData,
 ) -> VcxResult<ConnectionSignature> {
     let con_data = json!(con_data).to_string();
-    let (signature, sig_data) = get_signature_data(wallet, con_data, key).await?;
+    let k = if let Some(stripped_key) = key.strip_prefix("did:key:") {
+        Key::from_fingerprint(stripped_key)?
+    } else {
+        Key::from_fingerprint(key)?
+    };
+
+    let (signature, sig_data) = get_signature_data(wallet, con_data, &k.base58()).await?;
 
     let sig_data = general_purpose::URL_SAFE.encode(sig_data);
     let signature = general_purpose::URL_SAFE.encode(signature);
 
-    let connection_sig = ConnectionSignature::new(signature, sig_data, key.to_string());
+
+    let connection_sig = ConnectionSignature::new(signature, sig_data, Key::base58(&k));
 
     Ok(connection_sig)
 }

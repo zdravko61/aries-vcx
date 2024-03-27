@@ -15,11 +15,9 @@ use aries_vcx_core::{
 };
 use diddoc_legacy::aries::{diddoc::AriesDidDoc, service::AriesService};
 use messages::{
-    msg_fields::protocols::{
-        connection::{request::Request, response::Response, Connection},
-        out_of_band::invitation::Invitation as OOBInvitation,
-    },
-    AriesMessage,
+    msg_fields::protocols::
+        connection::{request::Request, response::Response, Connection}
+    , msg_types::{connection::{ConnectionType, ConnectionTypeV1}, Protocol}, AriesMessage
 };
 use serde_json::json;
 
@@ -96,7 +94,7 @@ impl<T: BaseWallet, P: MediatorPersistence> Agent<T, P> {
             id: "#inline".to_owned(),
             type_: "did-communication".to_owned(),
             priority: 0,
-            recipient_keys: vec![did_data.verkey().base58()],
+            recipient_keys: vec![format!("did:key:{}",did_data.verkey().fingerprint())],
             routing_keys,
             service_endpoint,
         };
@@ -114,8 +112,14 @@ impl<T: BaseWallet, P: MediatorPersistence> Agent<T, P> {
     pub fn get_oob_invite(&self) -> Result<OOBInvitation, String> {
         if let Some(service) = &self.service {
             let invitation = OutOfBandSender::create()
-                .append_service(&OobService::AriesService(service.clone()))
-                .oob;
+            .append_service(&OobService::AriesService(service.clone()))
+            .set_label("Rust Mediator")
+            .append_handshake_protocol(Protocol::ConnectionType(ConnectionType::V1(
+                ConnectionTypeV1::new_v1_0()
+            )))
+            .unwrap()
+            .oob;
+
             Ok(invitation)
         } else {
             Err("No service to create invite for".to_owned())
@@ -214,7 +218,7 @@ impl<T: BaseWallet, P: MediatorPersistence> Agent<T, P> {
         let auth_pubkey = their_keys
             .first()
             .ok_or("No recipient key for client :/ ?".to_owned())?;
-        self.create_account(auth_pubkey, &did_data.verkey().base58(), &their_diddoc)
+        self.create_account(auth_pubkey, &did_data.verkey().fingerprint(), &their_diddoc)
             .await?;
         Ok(packed_response_envelope)
     }
